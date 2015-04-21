@@ -42,6 +42,7 @@
 #include <avbts_osnet.hpp>
 #include <avbts_osthread.hpp>
 #include <avbts_oscondition.hpp>
+#include <ipcdef.hpp>
 
 #include <stdint.h>
 
@@ -55,17 +56,6 @@
 #define PDELAY_RESP_RECEIPT_TIMEOUT_MULTIPLIER 3
 #define SYNC_RECEIPT_TIMEOUT_MULTIPLIER 3
 #define ANNOUNCE_RECEIPT_TIMEOUT_MULTIPLIER 3
-
-typedef enum {
-	PTP_MASTER,
-	PTP_PRE_MASTER,
-	PTP_SLAVE,
-	PTP_UNCALIBRATED,
-	PTP_DISABLED,
-	PTP_FAULTY,
-	PTP_INITIALIZING,
-	PTP_LISTENING
-} PortState;
 
 typedef enum {
 	V1,
@@ -139,6 +129,11 @@ class IEEE1588Port {
 
 	OSNetworkInterface *net_iface;
 	LinkLayerAddress local_addr;
+
+	/* Port Status */
+	unsigned sync_count;  // 0 for master, ++ for each sync receive as slave
+	// set to 0 when asCapable is false, increment for each pdelay recvd
+	unsigned pdelay_count; 
 
 	/* Port Configuration */
 	unsigned char delay_mechanism;
@@ -217,8 +212,8 @@ class IEEE1588Port {
 	// Added for testing
 	bool forceSlave;
 	
-	bool serializeState( void *buf, off_t *count );
-	bool restoreSerializedState( void *buf, off_t *count );
+	bool serializeState( void *buf, long *count );
+	bool restoreSerializedState( void *buf, long *count );
 	void becomeMaster( bool annc );
 	void becomeSlave( bool );
 	
@@ -291,6 +286,9 @@ class IEEE1588Port {
 	PortState getPortState(void) {
 		return port_state;
 	}
+	void setPortState( PortState state ) {
+		port_state = state;
+	}
 	void getPortIdentity(PortIdentity & identity) {
 		identity = this->port_identity;
 	}
@@ -331,10 +329,10 @@ class IEEE1588Port {
 		return pdelay_rx_lock->unlock() == oslock_ok ? true : false;
 	}
 
-	int getTxLock() {
+	bool getTxLock() {
 		return port_tx_lock->lock() == oslock_ok ? true : false;
 	}
-	int putTxLock() {
+	bool putTxLock() {
 		return port_tx_lock->unlock() == oslock_ok ? true : false;
 	}
 	int getTimestampVersion() {
@@ -428,6 +426,20 @@ class IEEE1588Port {
 	(PortIdentity * destIdentity, LinkLayerAddress * remote);
 	void addSockAddrMap
 	(PortIdentity * destIdentity, LinkLayerAddress * remote);
+
+	void incPdelayCount() {
+		++pdelay_count;
+	}
+	unsigned getPdelayCount() {
+		return pdelay_count;
+	}
+	void incSyncCount() {
+		++sync_count;
+	}
+	unsigned getSyncCount() {
+		return sync_count;
+	}
 };
 
 #endif
+

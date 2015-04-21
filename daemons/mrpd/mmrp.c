@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <string.h>
+#include <errno.h>
 
 #include "parse.h"
 #include "mrpd.h"
@@ -110,6 +111,8 @@ int mmrp_add(struct mmrp_attribute *rattrib)
 					rattrib->next = attrib->next;
 					rattrib->prev = attrib;
 					attrib->next = rattrib;
+					if (rattrib->next)
+						rattrib->next->prev = rattrib;
 					return 0;
 
 				} else {
@@ -142,6 +145,8 @@ int mmrp_add(struct mmrp_attribute *rattrib)
 					rattrib->next = attrib->next;
 					rattrib->prev = attrib;
 					attrib->next = rattrib;
+					if (rattrib->next)
+						rattrib->next->prev = rattrib;
 					return 0;
 
 				} else {
@@ -196,6 +201,7 @@ int mmrp_merge(struct mmrp_attribute *rattrib)
 int mmrp_event(int event, struct mmrp_attribute *rattrib)
 {
 	struct mmrp_attribute *attrib;
+	int count = 0;
 
 	switch (event) {
 	case MRP_EVENT_LVATIMER:
@@ -209,7 +215,8 @@ int mmrp_event(int event, struct mmrp_attribute *rattrib)
 			mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
 #endif
 			mrp_applicant_fsm(&(MMRP_db->mrp_db),
-					  &(attrib->applicant), MRP_EVENT_TXLA);
+					  &(attrib->applicant), MRP_EVENT_TXLA,
+					  mrp_registrar_in(&(attrib->registrar)));
 			mrp_registrar_fsm(&(attrib->registrar),
 					  &(MMRP_db->mrp_db), MRP_EVENT_TXLA);
 			attrib = attrib->next;
@@ -218,22 +225,29 @@ int mmrp_event(int event, struct mmrp_attribute *rattrib)
 		mrp_lvatimer_fsm(&(MMRP_db->mrp_db), MRP_EVENT_LVATIMER);
 
 		MMRP_db->send_empty_LeaveAll_flag = 1;
+		mrp_lvatimer_fsm(&(MMRP_db->mrp_db), MRP_EVENT_TX);
 		mmrp_txpdu();
 		MMRP_db->send_empty_LeaveAll_flag = 0;
 		break;
 	case MRP_EVENT_RLA:
 		mrp_jointimer_start(&(MMRP_db->mrp_db));
+		if (NULL == rattrib)
+			return -1;	/* XXX internal fault */
+
 		/* update state */
 		attrib = MMRP_db->attrib_list;
 
 		while (NULL != attrib) {
+			if (attrib->type == rattrib->type) {
 #if LOG_MMRP
-			mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
+				mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
 #endif
-			mrp_applicant_fsm(&(MMRP_db->mrp_db),
-					  &(attrib->applicant), MRP_EVENT_RLA);
-			mrp_registrar_fsm(&(attrib->registrar),
+				mrp_applicant_fsm(&(MMRP_db->mrp_db),
+					  &(attrib->applicant), MRP_EVENT_RLA,
+					  mrp_registrar_in(&(attrib->registrar)));
+				mrp_registrar_fsm(&(attrib->registrar),
 					  &(MMRP_db->mrp_db), MRP_EVENT_RLA);
+			}
 			attrib = attrib->next;
 		}
 
@@ -249,13 +263,22 @@ int mmrp_event(int event, struct mmrp_attribute *rattrib)
 			mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
 #endif
 			mrp_applicant_fsm(&(MMRP_db->mrp_db),
-					  &(attrib->applicant), MRP_EVENT_TX);
+					  &(attrib->applicant), MRP_EVENT_TX,
+					  mrp_registrar_in(&(attrib->registrar)));
+			count += mrp_applicant_state_transition_implies_tx(&(attrib->applicant));
 			attrib = attrib->next;
 		}
 
-		mrp_lvatimer_fsm(&(MMRP_db->mrp_db), MRP_EVENT_TX);
-
 		mmrp_txpdu();
+
+		/*
+		 * Certain state transitions imply we need to request another tx
+		 * opportunity.
+		 */
+		if (count) {
+			mrp_jointimer_start(&(MMRP_db->mrp_db));
+		}
+
 		break;
 	case MRP_EVENT_LVTIMER:
 		mrp_lvtimer_stop(&(MMRP_db->mrp_db));
@@ -272,13 +295,18 @@ int mmrp_event(int event, struct mmrp_attribute *rattrib)
 	case MRP_EVENT_PERIODIC:
 		attrib = MMRP_db->attrib_list;
 
+		if (NULL != attrib) {
+			mrp_jointimer_start(&(MMRP_db->mrp_db));
+		}
+
 		while (NULL != attrib) {
-#if LOG_MMRP
-			mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
-#endif
 			mrp_applicant_fsm(&(MMRP_db->mrp_db),
 					  &(attrib->applicant),
-					  MRP_EVENT_PERIODIC);
+					  MRP_EVENT_PERIODIC,
+					  mrp_registrar_in(&(attrib->registrar)));
+#if LOG_MMRP
+			mmrp_print_debug_info(event, attrib);
+#endif
 			attrib = attrib->next;
 		}
 		break;
@@ -310,12 +338,14 @@ int mmrp_event(int event, struct mmrp_attribute *rattrib)
 		mrpd_log_printf("MMRP -> mrp_applicant_fsm\n");
 #endif
 		mrp_applicant_fsm(&(MMRP_db->mrp_db), &(attrib->applicant),
-				  event);
+				  event,
+				  mrp_registrar_in(&(attrib->registrar)));
 		/* remap local requests into registrar events */
 		switch (event) {
 		case MRP_EVENT_NEW:
 			mrp_registrar_fsm(&(attrib->registrar),
-					  &(MMRP_db->mrp_db), MRP_EVENT_RNEW);
+					  &(MMRP_db->mrp_db), MRP_EVENT_BEGIN);
+			attrib->registrar.notify = MRP_NOTIFY_NEW;
 			break;
 		case MRP_EVENT_JOIN:
 			if (MRP_IN_STATE == attrib->registrar.mrp_state)
@@ -365,7 +395,7 @@ struct mmrp_attribute *mmrp_alloc()
 {
 	struct mmrp_attribute *attrib;
 
-	attrib = malloc(sizeof(struct mmrp_attribute));
+	attrib = (struct mmrp_attribute *) malloc(sizeof(struct mmrp_attribute));
 	if (NULL == attrib)
 		return NULL;
 
@@ -375,10 +405,15 @@ struct mmrp_attribute *mmrp_alloc()
 	attrib->applicant.tx = 0;
 	attrib->applicant.sndmsg = MRP_SND_NULL;
 	attrib->applicant.encode = MRP_ENCODE_OPTIONAL;
+#ifdef LOG_MRP
+	attrib->applicant.mrp_previous_state = -1;
+#endif
 
 	attrib->registrar.mrp_state = MRP_MT_STATE;
 	attrib->registrar.notify = MRP_NOTIFY_NONE;
-
+#ifdef LOG_MRP
+	attrib->registrar.mrp_previous_state = -1;
+#endif
 	return attrib;
 }
 
@@ -420,6 +455,7 @@ int mmrp_recv_msg()
 	uint8_t macvec_firstval[6];
 	struct mmrp_attribute *attrib;
 	int endmarks;
+	int saw_lva = 0;
 
 	bytes = mrpd_recvmsgbuf(mmrp_socket, &msgbuf);
 	if (bytes <= 0)
@@ -435,12 +471,16 @@ int mmrp_recv_msg()
 	if (MMRP_ETYPE != ntohs(eth->typelen))
 		goto out;
 
-	/* XXX check dest mac address too? */
+	/* check dest mac address too */
+	if (memcmp(eth->destaddr, MMRP_ADDR, sizeof(eth->destaddr)))
+		goto out;
 
 	mrpdu = (mrpdu_t *) (msgbuf + sizeof(struct eth_hdr));
 
-	if (MMRP_PROT_VER != mrpdu->ProtocolVersion)	/* should accept */
+	/*
+	if (MMRP_PROT_VER != mrpdu->ProtocolVersion)
 		goto out;
+	*/
 
 	mrpdu_msg_ptr = MRPD_GET_MRPDU_MESSAGE_LIST(mrpdu);
 
@@ -485,6 +525,17 @@ int mmrp_recv_msg()
 				    MRPDU_VECT_NUMVALUES(ntohs
 							 (mrpdu_vectorptr->
 							  VectorHeader));
+
+				if (MRPDU_VECT_LVA(ntohs(mrpdu_vectorptr->VectorHeader)) && !saw_lva) {
+					saw_lva = 1;
+					attrib = mmrp_alloc();
+					if (NULL == attrib)
+						goto out;	/* oops - internal error */
+
+					attrib->type = 	MMRP_SVCREQ_TYPE;				
+					mmrp_event(MRP_EVENT_RLA, attrib);
+					free(attrib);
+				}
 
 				if (0 == numvalues)
 					/* Malformed - cant tell how long the trailing vectors are */
@@ -614,6 +665,16 @@ int mmrp_recv_msg()
 							 (mrpdu_vectorptr->
 							  VectorHeader));
 
+				if (MRPDU_VECT_LVA(ntohs(mrpdu_vectorptr->VectorHeader))) {
+					attrib = mmrp_alloc();
+					if (NULL == attrib)
+						goto out;	/* oops - internal error */
+
+					attrib->type = 	MMRP_MACVEC_TYPE;				
+					mmrp_event(MRP_EVENT_RLA, attrib);
+					free(attrib);
+				}
+
 				if (0 == numvalues)
 					/* Malformed - cant tell how long the trailing vectors are */
 					goto out;
@@ -707,10 +768,6 @@ int mmrp_recv_msg()
 					numvalues -= numvalues_processed;
 				}
 
-				if (MRPDU_VECT_LVA
-				    (ntohs(mrpdu_vectorptr->VectorHeader)))
-					mmrp_event(MRP_EVENT_RLA, NULL);
-
 				/* 1 byte Type, 1 byte Len, 6 byte FirstValue, and (n) vector bytes */
 				mrpdu_msg_ptr = (uint8_t *) mrpdu_vectorptr;
 				mrpdu_msg_ptr += 8 + numvectorbytes;
@@ -772,7 +829,6 @@ mmrp_emit_svcvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 			continue;
 		}
 
-		attrib_found_flag = 1;
 		if (0 == attrib->applicant.tx) {
 			attrib = attrib->next;
 			continue;
@@ -783,6 +839,7 @@ mmrp_emit_svcvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 			continue;
 		}
 
+		attrib_found_flag = 1;
 		/* pointing to at least one attribute which needs to be transmitted */
 		svcreq_firstval = attrib->attribute.svcreq;
 		mrpdu_vectorptr->FirstValue_VectorEvents[0] =
@@ -874,7 +931,7 @@ mmrp_emit_svcvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 				 * to send a JoinIn (if the registar state is 'In') or
 				 * a JoinMt if the registrar state is MT or LV.
 				 */
-				if (MRP_IN_STATE == attrib->registrar.mrp_state)
+				if (MRP_IN_STATE == vattrib->registrar.mrp_state)
 					vectevt[vectevt_idx] = MRPDU_JOININ;
 				else
 					vectevt[vectevt_idx] = MRPDU_JOINMT;
@@ -925,8 +982,10 @@ mmrp_emit_svcvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 
 		mrpdu_vectorptr->VectorHeader = MRPDU_VECT_NUMVALUES(numvalues);
 
-		if (lva)
-			mrpdu_vectorptr->VectorHeader |= MRPDU_VECT_LVA(0xFFFF);
+		if (lva) {
+			mrpdu_vectorptr->VectorHeader |= MRPDU_VECT_LVA_FLAG;
+			lva = 0;
+		}
 
 		mrpdu_vectorptr->VectorHeader =
 		    htons(mrpdu_vectorptr->VectorHeader);
@@ -948,7 +1007,7 @@ mmrp_emit_svcvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 	if ((0 == attrib_found_flag) && MMRP_db->send_empty_LeaveAll_flag) {
 
 		mrpdu_vectorptr->VectorHeader = MRPDU_VECT_NUMVALUES(0) |
-						MRPDU_VECT_LVA(0xFFFF);
+						MRPDU_VECT_LVA_FLAG;
 		mrpdu_vectorptr->VectorHeader =
 		    htons(mrpdu_vectorptr->VectorHeader);
 
@@ -1172,7 +1231,7 @@ mmrp_emit_macvectors(unsigned char *msgbuf, unsigned char *msgbuf_eof,
 		mrpdu_vectorptr->VectorHeader = MRPDU_VECT_NUMVALUES(numvalues);
 
 		if (lva)
-			mrpdu_vectorptr->VectorHeader |= MRPDU_VECT_LVA(0xFFFF);
+			mrpdu_vectorptr->VectorHeader |= MRPDU_VECT_LVA_FLAG;
 
 		mrpdu_vectorptr->VectorHeader =
 		    htons(mrpdu_vectorptr->VectorHeader);
@@ -1220,6 +1279,7 @@ int mmrp_txpdu(void)
 	msgbuf = (unsigned char *)malloc(MAX_FRAME_SIZE);
 	if (NULL == msgbuf)
 		return -1;
+	memset(msgbuf, 0, MAX_FRAME_SIZE);
 	msgbuf_len = 0;
 
 	msgbuf_wrptr = msgbuf;
@@ -1323,8 +1383,12 @@ int mmrp_txpdu(void)
 #if LOG_MMRP
 	mrpd_log_printf("MMRP send PDU\n");
 #endif
-	if (bytes <= 0)
+	if (bytes <= 0) {
+#if LOG_ERRORS
+		fprintf(stderr, "%s - Error on send %s", __FUNCTION__, strerror(errno));
+#endif
 		goto out;
+	}
 
 	free(msgbuf);
 	return 0;
@@ -1553,7 +1617,7 @@ int mmrp_recv_cmd(char *buf, int buflen, struct sockaddr_in *client)
 	uint8_t macvec_param[6];
 
 	if (NULL == MMRP_db) {
-		snprintf(respbuf, sizeof(respbuf) - 1, "ERC %s\n", buf);
+		snprintf(respbuf, sizeof(respbuf) - 1, "ERC MMRP_db %s\n", buf);
 		mrpd_send_ctl_msg(client, respbuf, sizeof(respbuf));
 		goto out;
 	}
@@ -1626,7 +1690,7 @@ int mmrp_recv_cmd(char *buf, int buflen, struct sockaddr_in *client)
 		if (rc)
 			goto out_ERI;
 	} else {
-		snprintf(respbuf, sizeof(respbuf) - 1, "ERC %s", buf);
+		snprintf(respbuf, sizeof(respbuf) - 1, "ERC MMRP %s", buf);
 		mrpd_send_ctl_msg(client, respbuf, sizeof(respbuf));
 		goto out;
 	}
@@ -1663,7 +1727,7 @@ int mmrp_init(int mmrp_enable)
 	if (rc < 0)
 		return -1;
 
-	MMRP_db = malloc(sizeof(struct mmrp_database));
+	MMRP_db = (struct mmrp_database *) malloc(sizeof(struct mmrp_database));
 
 	if (NULL == MMRP_db)
 		goto abort_socket;

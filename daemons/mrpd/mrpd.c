@@ -77,7 +77,6 @@ char *interface;
 int interface_fd;
 
 /* state machine controls */
-int periodic_enable;
 int registration;
 
 /* if registration is FIXED or FORBIDDEN
@@ -107,6 +106,7 @@ extern SOCKET msrp_socket;
 int periodic_timer;
 int gc_timer;
 unsigned int gc_ctl_msg_count = 0;
+static struct mrp_periodictimer_state mrp_periodic_state;
 
 extern struct mmrp_database *MMRP_db;
 extern struct mvrp_database *MVRP_db;
@@ -176,18 +176,20 @@ int gctimer_start()
 	return mrpd_timer_start(gc_timer, 30 * 1000);
 }
 
-int periodictimer_start()
+int mrp_periodictimer_start()
 {
-	/* periodictimer has expired. (10.7.5.23)
+	/* Single periodic timer and state machine per port
+	 * periodictimer has expired. (10.7.5.23)
 	 * PeriodicTransmission state machine generates periodic events
 	 * period is one-per-sec
 	 */
 	return mrpd_timer_start_interval(periodic_timer, 1000, 1000);
 }
 
-int periodictimer_stop()
+int mrp_periodictimer_stop()
 {
-	/* periodictimer has expired. (10.7.5.23)
+	/* Single periodic timer and state machine per port
+	 * periodictimer has expired. (10.7.5.23)
 	 * PeriodicTransmission state machine generates periodic events
 	 * period is one-per-sec
 	 */
@@ -213,8 +215,12 @@ int init_local_ctl(void)
 
 	rc = bind(sock_fd, (struct sockaddr *)&addr, addr_len);
 
-	if (rc < 0)
+	if (rc < 0) {
+#if LOG_ERRORS
+		fprintf(stderr, "%s - Error on bind %s", __FUNCTION__, strerror(errno));
+#endif
 		goto out;
+	}
 
 	control_socket = sock_fd;
 
@@ -238,10 +244,10 @@ mrpd_send_ctl_msg(struct sockaddr_in *client_addr, char *notify_data,
 
 #if LOG_CLIENT_SEND
 	if (logging_enable) {
-		mrpd_log_printf("[%02d] CLT MSG %05d:%s",
+		mrpd_log_printf("[%03d] CLT MSG %05d:%s",
 				gc_ctl_msg_count, client_addr->sin_port,
 				notify_data);
-		gc_ctl_msg_count = (gc_ctl_msg_count + 1) % 100;
+		gc_ctl_msg_count = (gc_ctl_msg_count + 1) % 1000;
 	}
 #endif
 	rc = sendto(control_socket, notify_data, notify_len,
@@ -333,7 +339,7 @@ int process_ctl_msg(char *buf, int buflen, struct sockaddr_in *client)
 		break;
 	default:
 		printf("unrecognized command %s\n", buf);
-		snprintf(respbuf, sizeof(respbuf) - 1, "ERC %s", buf);
+		snprintf(respbuf, sizeof(respbuf) - 1, "ERC MRP parse %s", buf);
 		mrpd_send_ctl_msg(client, respbuf, sizeof(respbuf));
 		return -1;
 		break;
@@ -397,7 +403,22 @@ int mrpd_recvmsgbuf(int sock, char **buf)
 	msg.msg_namelen = sizeof(client_addr);
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
-	bytes = recvmsg(sock, &msg, 0);
+	/* Non-blocking sockets. */
+	bytes = recvmsg(sock, &msg, MSG_DONTWAIT);
+
+	if ( (bytes < 0) && (errno != EAGAIN) ) {
+#if LOG_ERRORS
+		fprintf(stderr, "recvmsg sock %d: %s\r\n", sock, strerror(errno));
+#endif
+		return(-1);
+	}
+	else if (bytes == 0) {
+#if LOG_ERRORS
+		fprintf(stderr, "Closed socket!\r\n");
+#endif
+		return(-1);
+	}
+
 	return bytes;
 }
 
@@ -416,6 +437,7 @@ mrpd_init_protocol_socket(u_int16_t etype, int *sock,
 	if (NULL == multicast_addr)
 		return -1;
 
+	memset(&multicast_req, 0, sizeof(multicast_req));
 	*sock = -1;
 
 	lsock = socket(PF_PACKET, SOCK_RAW, htons(etype));
@@ -452,6 +474,9 @@ mrpd_init_protocol_socket(u_int16_t etype, int *sock,
 
 	rc = bind(lsock, (struct sockaddr *)&addr, sizeof(addr));
 	if (0 != rc) {
+#if LOG_ERRORS
+		fprintf(stderr, "%s - Error on bind %s", __FUNCTION__, strerror(errno));
+#endif
 		close(lsock);
 		return -1;
 	}
@@ -509,16 +534,6 @@ int mrpd_init_timers(struct mrp_database *mrp_db)
 	return -1;
 }
 
-int handle_periodic(void)
-{
-	if (periodic_enable)
-		periodictimer_start();
-	else
-		periodictimer_stop();
-
-	return 0;
-}
-
 int init_timers(void)
 {
 	/*
@@ -536,9 +551,6 @@ int init_timers(void)
 		goto out;
 
 	gctimer_start();
-
-	if (periodic_enable)
-		periodictimer_start();
 
 	return 0;
  out:
@@ -636,6 +648,10 @@ void process_events(void)
 	if (periodic_timer > max_fd)
 		max_fd = periodic_timer;
 
+	rc = mrp_periodictimer_fsm(&mrp_periodic_state, MRP_EVENT_BEGIN);
+	if (rc)
+		return;
+
 	FD_SET(gc_timer, &fds);
 	if (gc_timer > max_fd)
 		max_fd = gc_timer;
@@ -645,14 +661,27 @@ void process_events(void)
 		sel_fds = fds;
 		rc = select(max_fd + 1, &sel_fds, NULL, NULL, NULL);
 
-		if (-1 == rc)
+		if (-1 == rc) {
+#if LOG_ERRORS
+			fprintf(stderr, "Error on select %s\r\n", strerror(errno));
+#endif
 			return;	/* exit on error */
+		}
 		else {
-			if (FD_ISSET(control_socket, &sel_fds))
+			if (FD_ISSET(control_socket, &sel_fds)) {
+#if LOG_POLL_EVENTS
+				mrpd_log_printf("== EVENT recv_ctl_msg ==\n");
+#endif
 				recv_ctl_msg();
+			}
 			if (mmrp_enable) {
 				if FD_ISSET
-					(mmrp_socket, &sel_fds) mmrp_recv_msg();
+					(mmrp_socket, &sel_fds) {
+#if LOG_POLL_EVENTS
+					mrpd_log_printf("== EVENT mmrp_recv_msg ==\n");
+#endif
+					mmrp_recv_msg();
+					}
 				if FD_ISSET
 					(MMRP_db->mrp_db.lva_timer, &sel_fds) {
 					mrpd_log_timer_event("MMRP",
@@ -674,7 +703,12 @@ void process_events(void)
 			}
 			if (mvrp_enable) {
 				if FD_ISSET
-					(mvrp_socket, &sel_fds) mvrp_recv_msg();
+					(mvrp_socket, &sel_fds) {
+#if LOG_POLL_EVENTS
+					mrpd_log_printf("== EVENT mvrp_recv_msg ==\n");
+#endif
+					mvrp_recv_msg();
+					}
 				if FD_ISSET
 					(MVRP_db->mrp_db.lva_timer, &sel_fds) {
 					mrpd_log_timer_event("MVRP",
@@ -696,7 +730,12 @@ void process_events(void)
 			}
 			if (msrp_enable) {
 				if FD_ISSET
-					(msrp_socket, &sel_fds) msrp_recv_msg();
+					(msrp_socket, &sel_fds) {
+#if LOG_POLL_EVENTS
+					mrpd_log_printf("== EVENT msrp_recv_msg ==\n");
+#endif
+					msrp_recv_msg();
+				}
 				if FD_ISSET
 					(MSRP_db->mrp_db.lva_timer, &sel_fds) {
 					mrpd_log_timer_event("MSRP",
@@ -717,6 +756,11 @@ void process_events(void)
 					}
 			}
 			if (FD_ISSET(periodic_timer, &sel_fds)) {
+#if LOG_POLL_EVENTS && LOG_TIMERS
+				mrpd_log_printf("== EVENT periodic_timer ==\n");
+#endif
+				
+				mrp_periodictimer_fsm(&mrp_periodic_state, MRP_EVENT_PERIODIC);
 				if (mmrp_enable) {
 					mmrp_event(MRP_EVENT_PERIODIC, NULL);
 				}
@@ -726,11 +770,13 @@ void process_events(void)
 				if (msrp_enable) {
 					msrp_event(MRP_EVENT_PERIODIC, NULL);
 				}
-				handle_periodic();
 			}
 			if (FD_ISSET(gc_timer, &sel_fds)) {
 				mrpd_reclaim();
 			}
+#if LOG_POLL_EVENTS
+		mrpd_log_printf("== EVENT DONE ==\n");
+#endif
 		}
 	} while (1);
 }
@@ -767,13 +813,13 @@ int main(int argc, char *argv[])
 	mrpd_port = MRPD_PORT_DEFAULT;
 	interface = NULL;
 	interface_fd = -1;
-	periodic_enable = 0;
 	registration = MRP_REGISTRAR_CTL_NORMAL;	/* default */
 	participant = MRP_APPLICANT_CTL_NORMAL;	/* default */
 	control_socket = INVALID_SOCKET;
 	mmrp_socket = INVALID_SOCKET;
 	mvrp_socket = INVALID_SOCKET;
 	msrp_socket = INVALID_SOCKET;
+	mrp_periodic_state.state = -1;
 	periodic_timer = -1;
 	gc_timer = -1;
 
@@ -798,9 +844,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'd':
 			daemonize = 1;
-			break;
-		case 'p':
-			periodic_enable = 1;
 			break;
 		case 'i':
 			if (interface) {
@@ -876,13 +919,13 @@ int main(int argc, char *argv[])
 
 static void mrpd_log_timer_event(char *src, int event)
 {
-#if LOG_TIMERS
+#if LOG_POLL_EVENTS && LOG_TIMERS
 	if (event == MRP_EVENT_LVATIMER) {
-		mrpd_log_printf("%s leaveAll timer expires ->\n", src);
+		mrpd_log_printf("== EVENT %s leaveAll timer expires ==\n", src);
 	} else if (event == MRP_EVENT_LVTIMER) {
-		mrpd_log_printf("%s leave timer expires ->\n", src);
+		mrpd_log_printf("== EVENT %s leave timer expires ==\n", src);
 	} else if (event == MRP_EVENT_TX) {
-		mrpd_log_printf("%s join timer expires ->\n", src);
+		mrpd_log_printf("== EVENT %s join timer expires ==\n", src);
 	}
 #else
 	(void)src;
@@ -902,6 +945,8 @@ void mrpd_log_printf(const char *fmt, ...)
 		vsnprintf(sz, 512, fmt, arglist);
 		printf("MRPD %03d.%06d %s",
 		       (int)(tv.tv_sec % 1000), (int)tv.tv_usec, sz);
+		if (strstr(sz, ":ERP"))
+			printf("\n");
 		va_end(arglist);
 	}
 }

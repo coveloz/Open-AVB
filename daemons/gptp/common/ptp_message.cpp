@@ -41,8 +41,6 @@
 #include <string.h>
 #include <math.h>
 
-#include <time.h>
-
 PTPMessageCommon::PTPMessageCommon(IEEE1588Port * port)
 {
 	// Fill in fields using port/clock dataset as a template
@@ -117,8 +115,8 @@ PTPMessageCommon *buildPTPMessage
 	XPTPD_INFO("Captured Sequence Id: %u", sequenceId);
 
 	if (!(messageType >> 3)) {
-		int iter = 2;
-		long req = 1000;	// = 1 ms
+		int iter = 5;
+		long req = 4000;	// = 1 ms
 		int ts_good =
 		    port->getRxTimestamp
 			(sourcePortIdentity, sequenceId, timestamp, counter_value, false);
@@ -426,7 +424,7 @@ PTPMessageCommon *buildPTPMessage
 				buf+
 				PTP_ANNOUNCE_GRANDMASTER_CLOCK_QUALITY
 				(PTP_ANNOUNCE_OFFSET),
-				sizeof( annc->grandmasterClockQuality ));
+				sizeof( *annc->grandmasterClockQuality ));
 			annc->
 			  grandmasterClockQuality->offsetScaledLogVariance =
 			  PLAT_ntohs
@@ -481,7 +479,7 @@ PTPMessageCommon *buildPTPMessage
 	memcpy(&(msg->correctionField),
 	       buf + PTP_COMMON_HDR_CORRECTION(PTP_COMMON_HDR_OFFSET),
 	       sizeof(msg->correctionField));
-	msg->correctionField = bswap_64(msg->correctionField);	// Assume LE machine
+	msg->correctionField = byte_swap64(msg->correctionField);	// Assume LE machine
 	msg->sourcePortIdentity = sourcePortIdentity;
 	msg->sequenceId = sequenceId;
 	memcpy(&(msg->control),
@@ -513,7 +511,7 @@ void PTPMessageCommon::buildCommonHeader(uint8_t * buf)
 	unsigned char tspec_msg_t;
 	tspec_msg_t = messageType | 0x10;
 	//tspec_msg_t = messageType;
-	long long correctionField_BE = bswap_64(correctionField);	// Assume LE machine
+	long long correctionField_BE = byte_swap64(correctionField);	// Assume LE machine
 	uint16_t messageLength_NO = PLAT_htons(messageLength);
 
 	memcpy(buf + PTP_COMMON_HDR_TRANSSPEC_MSGTYPE(PTP_COMMON_HDR_OFFSET),
@@ -746,42 +744,27 @@ void PTPMessageAnnounce::sendPort(IEEE1588Port * port,
 void PTPMessageAnnounce::processMessage(IEEE1588Port * port)
 {
 	// Delete announce receipt timeout
-	port->getClock()->deleteEventTimer(port,
-					   ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES);
+	port->getClock()->deleteEventTimerLocked
+		(port, ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES);
 
 	if( stepsRemoved >= 255 ) goto bail;
 	// Add message to the list
 	port->addQualifiedAnnounce(this);
 
-	port->getClock()->addEventTimer(port, STATE_CHANGE_EVENT, 16000000);
-
-bail:
-	port->getClock()->addEventTimer(port, ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES,
-					(unsigned long long)
-					(ANNOUNCE_RECEIPT_TIMEOUT_MULTIPLIER *
-					 (pow
-					  ((double)2,
-					   port->getAnnounceInterval()) *
-					  1000000000.0)));
+	port->getClock()->addEventTimerLocked(port, STATE_CHANGE_EVENT, 16000000);
+ bail:
+	port->getClock()->addEventTimerLocked
+		(port, ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES,
+		 (unsigned long long)
+		 (ANNOUNCE_RECEIPT_TIMEOUT_MULTIPLIER *
+		  (pow
+		   ((double)2,
+			port->getAnnounceInterval()) *
+		   1000000000.0)));
 }
 
 void PTPMessageSync::processMessage(IEEE1588Port * port)
 {
-	Timestamp system_time;
-	Timestamp device_time;
-	Timestamp corrected_sync_time;
-
-	uint64_t delay;
-
-	signed long long local_system_offset;
-	signed long long scalar_offset;
-	int correction;
-
-	FrequencyRatio local_clock_adjustment;
-	FrequencyRatio local_system_freq_offset;
-
-	// Expire any SYNC_RECEIPT timers that exist
-	port->getClock()->deleteEventTimer(port, SYNC_RECEIPT_TIMEOUT_EXPIRES);
 	if (port->getPortState() == PTP_DISABLED ) {
 		// Do nothing Sync messages should be ignored when in this state
 		return;
@@ -792,12 +775,7 @@ void PTPMessageSync::processMessage(IEEE1588Port * port)
 		return;
 	}
 
-	XPTPD_INFO("PTP assist flag is not set, FLAGS[0,1] = %u,%u", flags[0],
-		   flags[1]);
-
-//   if( flags[PTP_ASSIST_BYTE] & (0x1<<PTP_ASSIST_BIT)) {
-	if (true) {
-		// If PTP_ASSIST flag is set, expect a follow-up message and do nothing
+	if( flags[PTP_ASSIST_BYTE] & (0x1<<PTP_ASSIST_BIT)) {
 		PTPMessageSync *old_sync = port->getLastSync();
 		if (old_sync != NULL) {
 			delete old_sync;
@@ -806,75 +784,12 @@ void PTPMessageSync::processMessage(IEEE1588Port * port)
 		_gc = false;
 		goto done;
 	} else {
+		XPTPD_ERROR("PTP assist flag is not set, discarding invalid sync");
 		_gc = true;
-	}
-
-	// Indicates invalid link delay, wait until link delay had been calculated
-	if ((delay = port->getLinkDelay()) == 3600000000000) {
-		printf
-		    ("Got Sync/Follow-Up but Link Delay has not been computed\n");
 		goto done;
 	}
 
-	correction = (int) (delay + (correctionField >> 16));
-	corrected_sync_time = _timestamp;
-	TIMESTAMP_SUB_NS( corrected_sync_time, correction );
-	scalar_offset  = TIMESTAMP_TO_NS( corrected_sync_time );
-	scalar_offset -= TIMESTAMP_TO_NS( originTimestamp );
-	
-	// Otherwise synchronize clock with approximate time from Sync message
-	uint32_t local_clock;
-	uint32_t nominal_clock_rate;
-	uint32_t device_sync_time_offset;
-
-	port->getDeviceTime
-		(system_time, device_time, local_clock, nominal_clock_rate);
-
-	// Adjust local_clock to correspond to _timestamp
-	device_sync_time_offset =
-	    TIMESTAMP_TO_NS(device_time) - TIMESTAMP_TO_NS(_timestamp);
-	local_clock -=
-	    device_sync_time_offset / (1000000000 / nominal_clock_rate);
-
-	XPTPD_INFO
-		("ptp_message::sync::processMessage System time: %u,%u "
-		 "Device Time: %u,%u",
-	     system_time.seconds_ls, system_time.nanoseconds,
-	     device_time.seconds_ls, device_time.nanoseconds);
-
-	local_clock_adjustment = port->getClock()->
-		calcMasterLocalClockRateDifference
-		( originTimestamp, corrected_sync_time );
-
-	local_system_offset =
-		TIMESTAMP_TO_NS(system_time) - TIMESTAMP_TO_NS(device_time);
-
-	if( port->getPortState() != PTP_MASTER ) {
-		/* Do not call calcLocalSystemClockRateDifference it updates
-		   state global to the clock object and if we are master then
-		   the network is transitioning to us not being master but the 
-		   master process is still running locally */
-		local_system_freq_offset = port->getClock()->
-			calcLocalSystemClockRateDifference( device_time, system_time );
-	  TIMESTAMP_SUB_NS
-	    ( system_time, (uint64_t)
-		  (device_sync_time_offset/local_system_freq_offset) );
-	  port->getClock()->setMasterOffset
-	    ( scalar_offset, _timestamp, local_clock_adjustment,
-	      local_system_offset, system_time, local_system_freq_offset,
-	      nominal_clock_rate, local_clock );
-	  port->syncDone();
-	}
-
-
  done:
-	// Restart the SYNC_RECEIPT timer
-	port->getClock()->addEventTimer
-		(port, SYNC_RECEIPT_TIMEOUT_EXPIRES, (unsigned long long)
-		 (SYNC_RECEIPT_TIMEOUT_MULTIPLIER *
-		  ((double) pow((double)2, port->getSyncInterval()) *
-		   1000000000.0)));
-
 	return;
 }
 
@@ -952,7 +867,6 @@ void PTPMessageFollowUp::processMessage(IEEE1588Port * port)
 	Timestamp sync_arrival;
 	Timestamp system_time(0, 0, 0);
 	Timestamp device_time(0, 0, 0);
-	Timestamp corrected_sync_time;
 
 	signed long long local_system_offset;
 	signed long long scalar_offset;
@@ -963,6 +877,10 @@ void PTPMessageFollowUp::processMessage(IEEE1588Port * port)
 	int correction;
 
 	XPTPD_INFO("Processing a follow-up message");
+
+	// Expire any SYNC_RECEIPT timers that exist
+	port->getClock()->deleteEventTimerLocked
+		(port, SYNC_RECEIPT_TIMEOUT_EXPIRES);
 
 	if (port->getPortState() == PTP_DISABLED ) {
 		// Do nothing Sync messages should be ignored when in this state
@@ -1004,12 +922,11 @@ void PTPMessageFollowUp::processMessage(IEEE1588Port * port)
 	correctionField = (uint64_t)
 		((correctionField >> 16)/master_local_freq_offset);
 	correction = (int) (delay + correctionField);
-	corrected_sync_time = sync_arrival;
 	
 	if( correction > 0 )
-	  TIMESTAMP_SUB_NS( corrected_sync_time, correction );
-	else TIMESTAMP_ADD_NS( corrected_sync_time, -correction );
-	scalar_offset  = TIMESTAMP_TO_NS( corrected_sync_time );
+	  TIMESTAMP_ADD_NS( preciseOriginTimestamp, correction );
+	else TIMESTAMP_SUB_NS( preciseOriginTimestamp, -correction );
+	scalar_offset  = TIMESTAMP_TO_NS( sync_arrival );
 	scalar_offset -= TIMESTAMP_TO_NS( preciseOriginTimestamp );
 
 	XPTPD_INFO
@@ -1038,15 +955,13 @@ void PTPMessageFollowUp::processMessage(IEEE1588Port * port)
 	     system_time.seconds_ls, system_time.nanoseconds,
 	     device_time.seconds_ls, device_time.nanoseconds);
 
-	local_system_offset =
-	    TIMESTAMP_TO_NS(system_time) - TIMESTAMP_TO_NS(device_time);
-
 	local_clock_adjustment =
 	  port->getClock()->
 	  calcMasterLocalClockRateDifference
-	  ( preciseOriginTimestamp, corrected_sync_time );
+	  ( preciseOriginTimestamp, sync_arrival );
 
 	if( port->getPortState() != PTP_MASTER ) {
+		port->incSyncCount();
 		/* Do not call calcLocalSystemClockRateDifference it updates state
 		   global to the clock object and if we are master then the network 
 		   is transitioning to us not being master but the master process
@@ -1059,11 +974,21 @@ void PTPMessageFollowUp::processMessage(IEEE1588Port * port)
 			( system_time, (uint64_t)
 			  (((FrequencyRatio) device_sync_time_offset)/
 			   local_system_freq_offset) );
+		local_system_offset =
+			TIMESTAMP_TO_NS(system_time) - TIMESTAMP_TO_NS(sync_arrival);
+
 		port->getClock()->setMasterOffset
 			( scalar_offset, sync_arrival, local_clock_adjustment,
 			  local_system_offset, system_time, local_system_freq_offset,
-			  nominal_clock_rate, local_clock );
+			  port->getSyncCount(), port->getPdelayCount(),
+			  port->getPortState() );
 		port->syncDone();
+		// Restart the SYNC_RECEIPT timer
+		port->getClock()->addEventTimerLocked
+			(port, SYNC_RECEIPT_TIMEOUT_EXPIRES, (unsigned long long)
+			 (SYNC_RECEIPT_TIMEOUT_MULTIPLIER *
+			  ((double) pow((double)2, port->getSyncInterval()) *
+			   1000000000.0)));
 	}
 
 done:
@@ -1094,10 +1019,10 @@ void PTPMessagePathDelayReq::processMessage(IEEE1588Port * port)
 	PTPMessagePathDelayRespFollowUp *resp_fwup;
 
 	int ts_good;
-	int iter = 2;
 	Timestamp resp_timestamp;
 	unsigned resp_timestamp_counter_value;
-	unsigned req = 1000;	// = 1 ms
+	unsigned req = TX_TIMEOUT_BASE;
+	int iter = TX_TIMEOUT_ITER;
 
 	if (port->getPortState() == PTP_DISABLED) {
 		// Do nothing all messages should be ignored when in this state
@@ -1128,10 +1053,6 @@ void PTPMessagePathDelayReq::processMessage(IEEE1588Port * port)
 	this->getPortIdentity(&requestingPortIdentity_p);
 	resp->setRequestingPortIdentity(&requestingPortIdentity_p);
 	resp->setRequestReceiptTimestamp(_timestamp);
-	if( port->getTimestampVersion() != _timestamp._version ) {
-		delete resp;
-		goto done;
-	}
 	port->getTxLock();
 	resp->sendPort(port, sourcePortIdentity);
 
@@ -1162,6 +1083,15 @@ void PTPMessagePathDelayReq::processMessage(IEEE1588Port * port)
 			  ts_good, msg);
 		delete resp;
 		goto done;
+	}
+
+	if( resp_timestamp._version != _timestamp._version ) {
+		XPTPD_ERROR("TX timestamp version mismatch: %u/%u\n",
+			    resp_timestamp._version, _timestamp._version);
+#if 0 // discarding the request could lead to the peer setting the link to non-asCapable
+		delete resp;
+		goto done;
+#endif
 	}
 
 	resp_fwup = new PTPMessagePathDelayRespFollowUp(port);
@@ -1253,7 +1183,7 @@ void PTPMessagePathDelayResp::processMessage(IEEE1588Port * port)
 		return;
 	}
 
-	port->getClock()->deleteEventTimer
+	port->getClock()->deleteEventTimerLocked
 		(port, PDELAY_RESP_RECEIPT_TIMEOUT_EXPIRES);
 	PTPMessagePathDelayResp *old_pdelay_resp = port->getLastPDelayResp();
 	if (old_pdelay_resp != NULL) {
@@ -1436,7 +1366,7 @@ void PTPMessagePathDelayRespFollowUp::processMessage(IEEE1588Port * port)
 			delete port->getLastPDelayRespFollowUp();
 		}
 		port->setLastPDelayRespFollowUp(this);
-		port->getClock()->addEventTimer
+		port->getClock()->addEventTimerLocked
 			(port, PDELAY_DEFERRED_PROCESSING, 1000000);
 		goto defer;
 	}
@@ -1445,8 +1375,12 @@ void PTPMessagePathDelayRespFollowUp::processMessage(IEEE1588Port * port)
 	remote_resp_tx_timestamp = responseOriginTimestamp;
 
 	if( request_tx_timestamp._version != response_rx_timestamp._version ) {
-	  goto abort;
+		XPTPD_ERROR("RX timestamp version mismatch %d/%d",
+			    request_tx_timestamp._version, response_rx_timestamp._version );
+		goto abort;
 	}
+
+	port->incPdelayCount();
 
 
 	link_delay =
