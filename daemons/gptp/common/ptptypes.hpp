@@ -34,12 +34,17 @@
 #ifndef WINPTP_TYPES_HPP
 #define WINPTP_TYPES_HPP
 
-typedef long double FrequencyRatio;
+/**@file*/
 
-#define ETHER_ADDR_OCTETS	6
-#define IP_ADDR_OCTETS		4
-#define PTP_ETHERTYPE 0x88F7
+typedef long double FrequencyRatio; /*!< Frequency Ratio */
 
+#define ETHER_ADDR_OCTETS	6		/*!< Number of octets in a link layer address*/
+#define IP_ADDR_OCTETS		4		/*!< Number of octets in a ip address*/
+#define PTP_ETHERTYPE 0x88F7		/*!< PTP ethertype */
+
+/**
+ * PortState enumeration
+ */
 typedef enum {
 	PTP_MASTER = 7,
 	PTP_PRE_MASTER,
