@@ -1,31 +1,31 @@
 /******************************************************************************
 
-Copyright (c) 2009-2012, Intel Corporation 
+Copyright (c) 2009-2012, Intel Corporation
 All rights reserved.
 
-Redistribution and use in source and binary forms, with or without 
+Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
 
-1. Redistributions of source code must retain the above copyright notice, 
+1. Redistributions of source code must retain the above copyright notice,
 this list of conditions and the following disclaimer.
 
-2. Redistributions in binary form must reproduce the above copyright 
-notice, this list of conditions and the following disclaimer in the 
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
 documentation and/or other materials provided with the distribution.
 
-3. Neither the name of the Intel Corporation nor the names of its 
-contributors may be used to endorse or promote products derived from 
+3. Neither the name of the Intel Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
 this software without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
@@ -48,19 +48,16 @@ POSSIBILITY OF SUCH DAMAGE.
 #define PIPE_PREFIX "\\\\.\\pipe\\"		/*!< PIPE name prefix */
 #define P802_1AS_PIPENAME "gptp-ctrl"	/*!< PIPE group name */
 
-/**
- * Provides a data structure for gPTP time
- */
 typedef struct {
-	int64_t ml_phoffset;		/*!< Master to local phase offset*/
-	int64_t ls_phoffset;		/*!< Local to system phase offset*/
-	FrequencyRatio ml_freqoffset;	/*!< Master to local frequency offset*/
-	FrequencyRatio ls_freqoffset;	/*!< Local to system frequency offset*/ 
-	int64_t local_time;				/*!< Local time of last update*/
-	uint32_t sync_count;			/*!< Sync messages count*/
-	uint32_t pdelay_count;			/*!< pdelay messages count*/
-	PortState port_state;			/*!< gPTP port state*/
-	DWORD  process_id;				/*!< Process ID number */
+	int64_t ml_phoffset;
+	int64_t ls_phoffset;
+	FrequencyRatio ml_freqoffset;
+	FrequencyRatio ls_freqoffset;
+	int64_t local_time;
+	uint32_t sync_count;
+	uint32_t pdelay_count;
+	PortState port_state;
+	DWORD  process_id;
 } gPtpTimeData;
 
 
@@ -165,7 +162,7 @@ public:
 	}
 	/**
 	 * @brief  Gets pipe message type
-	 * @return Pipe message type
+	 * @return ::NPIPE_MSG_TYPE
 	 */
 	NPIPE_MSG_TYPE getType() { return type; }
 };
@@ -207,12 +204,12 @@ public:
 	}
 	/**
 	 * @brief  Initializes the interface with specific values
-	 * @param  ml_phoffset Master to local phase offset
-	 * @param  ml_freqoffset Master to local frequency offset
-	 * @param  ls_phoffset Local to system phase offset
-	 * @param  ls_freqoffset Local to system frequency offset
-	 * @param  local_time Local time
-	 * @return void 
+	 * @param  ml_phoffset Master to local phase offset in nano-seconds
+	 * @param  ml_freqoffset Master to local frequency offset in the ::FrequencyRatio format
+	 * @param  ls_phoffset Local to system phase offset in nano-seconds
+	 * @param  ls_freqoffset Local to system frequency offset in the ::FrequencyRatio format
+	 * @param  local_time Local time in nanoseconds
+	 * @return void
 	 */
 	void init( int64_t ml_phoffset, FrequencyRatio ml_freqoffset, int64_t ls_phoffset, FrequencyRatio ls_freqoffset, uint64_t local_time ) {
 		_init();
@@ -322,7 +319,7 @@ public:
 		default:
 			result = 1; // > 0
 			break;
-		} 
+		}
 		return (result < 0) ? true : false;
 	}
 };
@@ -347,7 +344,7 @@ public:
 	/**
 	 * @brief  Initializes Interface's internal variables and sets
 	 * control and addresses values
-	 * @param  which Control enumeration
+	 * @param  which ::CtrlWhich enumeration
 	 * @param  addr Peer addresses
 	 * @return void
 	 */
@@ -370,25 +367,26 @@ public:
 	void setPeerAddr( PeerAddr addr ) { this->addr = addr; }
 	/**
 	 * @brief  Gets control type
-	 * @return CtrlWhich type
+	 * @return ::CtrlWhich type
 	 */
 	CtrlWhich getCtrlWhich() { return which; }
 	/**
 	 * @brief  Sets control message type
-	 * @param  which CtrlWhich message
+	 * @param  which ::CtrlWhich message
 	 * @return void
 	 */
 	void setCtrlWhich( CtrlWhich which ) { this->which = which; }
 	/**
 	 * @brief  Gets internal flags
 	 * @return Internal flags
+	 * @todo What are these flags used for? Apparently its not in use.
 	 */
 	uint16_t getFlags() { return flags; }
 };
 
 /**
  * WindowsNPipeQueryMessage is sent from the client to gPTP daemon to query the
- * offset.  The daemon sends WindowsNPipeMessage in response.
+ * offset of type ::NPIPE_MSG_TYPE.  The daemon sends WindowsNPipeMessage in response.
  * Currently there is no data associated with this message.
  */
 class WinNPipeQueryMessage : public WindowsNPipeMessage {
@@ -402,6 +400,7 @@ public:
 
 /**
  * Provides the client's named pipe interface
+ * @todo Not in use and should be removed.
  */
 typedef union {
 	WinNPipeCtrlMessage a;	/*!< Control message */
@@ -410,6 +409,7 @@ typedef union {
 
 /**
  * Provides the server's named pipe interface
+ * @todo Not in use and should be removed.
  */
 typedef union {
 	WinNPipeOffsetUpdateMessage a;	/*!< Offset update message */

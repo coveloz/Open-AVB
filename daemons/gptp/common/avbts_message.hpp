@@ -52,10 +52,7 @@
 
 #define PTP_ETHER 1		/*!< @todo Not used */
 #define PTP_DEFAULT 255	/*!< @todo Not used */
-/**
- * @addtogroup PTP_COMMON_HDR
-* @{
-*/
+
 #define PTP_COMMON_HDR_OFFSET 0		/*!< PTP common header offset */
 #define PTP_COMMON_HDR_LENGTH 34	/*!< PTP common header length in bytes */
 #define PTP_COMMON_HDR_TRANSSPEC_MSGTYPE(x) x	/*!< Gets the message type offset on PTP header */
@@ -69,12 +66,7 @@
 #define PTP_COMMON_HDR_SEQUENCE_ID(x) x+30		/*!< Gets the sequence id offset on PTP header */
 #define PTP_COMMON_HDR_CONTROL(x) x+32			/*!< Gets the control offset on PTP header */
 #define PTP_COMMON_HDR_LOG_MSG_INTRVL(x) x+33	/*!< Gets the log message interval offset on PTP header */
-/**@} */
 
-/**
- * @addtogroup PTP_ANNOUNCE
- * @{
- */
 #define PTP_ANNOUNCE_OFFSET 34							/*!< PTP announce offset */
 #define PTP_ANNOUNCE_LENGTH 30							/*!< PTP announce length in bytes */
 #define PTP_ANNOUNCE_CURRENT_UTC_OFFSET(x) x+10			/*!< Gets PTP announce current UTC offset */
@@ -84,44 +76,25 @@
 #define PTP_ANNOUNCE_GRANDMASTER_IDENTITY(x) x+19		/*!< Gets Grandmaster identity offset on announce fields*/
 #define PTP_ANNOUNCE_STEPS_REMOVED(x) x+27				/*!< Gets steps removed offset on announce fields*/
 #define PTP_ANNOUNCE_TIME_SOURCE(x) x+29				/*!< Gets time source offset on announce fields*/
-/**@}*/
 
-/**
- * @addtogroup PTP_SYNC
- * @{
- */
 #define PTP_SYNC_OFFSET 34		/*!< PTP SYNC base offset */
 #define PTP_SYNC_LENGTH 10		/*!< PTP SYNC length in bytes */
 #define PTP_SYNC_SEC_MS(x) x	/*!< PTP SYNC seconds MSB offset */
 #define PTP_SYNC_SEC_LS(x) x+2	/*!< PTP SYNC seconds LSB offset */
 #define PTP_SYNC_NSEC(x) x+6	/*!< PTP SYNC nanoseconds offset */
-/** @} */
 
-/**
- * @addtogroup PTP_FOLLOWUP
- * @{
- */
 #define PTP_FOLLOWUP_OFFSET 34		/*!< PTP FOLLOWUP base offset */
 #define PTP_FOLLOWUP_LENGTH 10		/*!< PTP FOLLOWUP length in bytes */
 #define PTP_FOLLOWUP_SEC_MS(x) x	/*!< Gets the followup seconds MSB offset */
 #define PTP_FOLLOWUP_SEC_LS(x) x+2	/*!< Gets the followup seconds LSB offset */
 #define PTP_FOLLOWUP_NSEC(x) x+6	/*!< Gets tne followup nanoseconds offset */
-/** @}*/
 
-/**
- * @addtogroup PTP_PDELAY_REQ
- */
 #define PTP_PDELAY_REQ_OFFSET 34		/*!< PTP PDELAY REQUEST base offset */
 #define PTP_PDELAY_REQ_LENGTH 20		/*!< PTP PDELAY REQUEST length in bytes */
 #define PTP_PDELAY_REQ_SEC_MS(x) x		/*!< Gets the pdelay request seconds MSB offset */
 #define PTP_PDELAY_REQ_SEC_LS(x) x+2	/*!< Gets the pdelay request seconds LSB offset */
 #define PTP_PDELAY_REQ_NSEC(x) x+6		/*!< Gets the pdelay request nanoseconds offset */
-/*@}*/
 
-/**
- * @addtogroup PTP_PDELAY_RESP
- * @{
- */
 #define PTP_PDELAY_RESP_OFFSET 34				/*!< PDELAY RESPONSE base offset */
 #define PTP_PDELAY_RESP_LENGTH 20				/*!< PDELAY RESPONSE length in bytes */
 #define PTP_PDELAY_RESP_SEC_MS(x) x				/*!< Gets the pdelay response seconds MSB offset */
@@ -129,12 +102,7 @@
 #define PTP_PDELAY_RESP_NSEC(x) x+6				/*!< Gets the pdelay nanoseconds offset */
 #define PTP_PDELAY_RESP_REQ_CLOCK_ID(x) x+10	/*!< Gets the pdelay response request clock id offset */
 #define PTP_PDELAY_RESP_REQ_PORT_ID(x) x+18		/*!< Gets the pdelay response request port id offset */
-/*@}*/
 
-
-/**
- * @addtogroup PTP_PDELAY_FOLLOWUP
- */
 #define PTP_PDELAY_FOLLOWUP_OFFSET 34				/*!< PTP PDELAY FOLLOWUP base offset*/
 #define PTP_PDELAY_FOLLOWUP_LENGTH 20				/*!< PTP PDELAY FOLLOWUP length in bytes */
 #define PTP_PDELAY_FOLLOWUP_SEC_MS(x) x				/*!< Gets the pdelay followup seconds MSB offset*/
@@ -142,7 +110,6 @@
 #define PTP_PDELAY_FOLLOWUP_NSEC(x) x+6				/*!< Gets the pdelay followup nanoseconds offset*/
 #define PTP_PDELAY_FOLLOWUP_REQ_CLOCK_ID(x) x+10	/*!< Gets the pdelay followup request clock id offset*/
 #define PTP_PDELAY_FOLLOWUP_REQ_PORT_ID(x) x+18		/*!< Gets the pdelay followup request port id offset*/
-/**@}*/
 
 #define PTP_LI_61_BYTE 1		/*!< PTP_LI_61(leap61) byte offset on flags field */
 #define PTP_LI_61_BIT 0			/*!< PTP_LI_61(leap61) bit offset on PTP_LI_61 byte*/
@@ -194,7 +161,8 @@ enum MulticastType {
 };
 
 /**
- * Provides the PTPMessage common interface
+ * Provides the PTPMessage common interface used during building of
+ * PTP messages.
  */
 class PTPMessageCommon {
 protected:
@@ -274,7 +242,7 @@ protected:
 		return correctionField;
 	}
 	/**
-	 * @brief  Sets the correction field. It expects Little-Endian format
+	 * @brief  Sets the correction field. It expects the host format.
 	 * @param  correctionAmount
 	 * @return void
 	 * @todo Little endian format could be removed by adding endianess discovery on
@@ -292,7 +260,7 @@ protected:
 	void getPortIdentity(PortIdentity * identity);
 	/**
 	 * @brief  Sets PortIdentity value
-	 * @param  identity Source port identity value to be set.
+	 * @param  identity [in] Source port identity value to be set.
 	 * @return void
 	 */
 	void setPortIdentity(PortIdentity * identity);
@@ -350,18 +318,11 @@ protected:
 	 */
 	void buildCommonHeader(uint8_t * buf);
 
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };
 
-/*!< Exact fit. No padding*/
+/*Exact fit. No padding*/
 #pragma pack(push,1)
 
 #define PATH_TRACE_TLV_TYPE 0x8		/*!< This is the value that indicates the
@@ -391,7 +352,7 @@ class PathTraceTLV {
 	}
 	/**
 	 * @brief  Parses ClockIdentity from message buffer
-	 * @param  buffer [in] Message buffer
+	 * @param  buffer [in] Message buffer. It should be at least ::PTP_CLOCK_IDENTITY_LENGTH bytes long.
 	 * @return void
 	 */
 	void parseClockIdentity(uint8_t *buffer) {
@@ -457,11 +418,14 @@ class PathTraceTLV {
 	}
 };
 
-/*!< back to whatever the previous packing mode was */
+/* back to whatever the previous packing mode was */
 #pragma pack(pop)
 
 /**
  * Provides the PTPMessageAnnounce interface
+ * The PTPMessageAnnounce class is used to create
+ * announce messages on the 802.1AS format when building
+ * the ptp messages.
  */
 class PTPMessageAnnounce:public PTPMessageCommon {
  private:
@@ -481,7 +445,6 @@ class PTPMessageAnnounce:public PTPMessageCommon {
  public:
 	 /**
 	  * Creates the PTPMessageAnnounce interface
-	  * Defines a new ClockQuality object
 	  */
 	 PTPMessageAnnounce(IEEE1588Port * port);
 
@@ -491,8 +454,8 @@ class PTPMessageAnnounce:public PTPMessageCommon {
 	~PTPMessageAnnounce();
 
 	/**
-	 * @brief  Compare announce messages against
-	 * grandmaster capabilities.
+	 * @brief  Compare gramdmaster's capabilities comming on the
+	 * announce messages against the current grandmaster capabilities.
 	 * @param  msg [in] PTPMessageAnnounce to be compared
 	 * @return TRUE if it is better. FALSE otherwise.
 	 */
@@ -564,20 +527,13 @@ class PTPMessageAnnounce:public PTPMessageCommon {
 	 */
 	void sendPort(IEEE1588Port * port, PortIdentity * destIdentity);
 
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage(char *buf, int size,
 						 LinkLayerAddress * remote,
 						 IEEE1588Port * port);
 };
 
 /**
- * Provides the PTP message sync interface
+ * Provides a class for building the PTP Sync message
  */
 class PTPMessageSync : public PTPMessageCommon {
  private:
@@ -619,18 +575,11 @@ class PTPMessageSync : public PTPMessageCommon {
 	 */
 	void sendPort(IEEE1588Port * port, PortIdentity * destIdentity);
 
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };
 
-/*!< Exact fit. No padding*/
+/* Exact fit. No padding*/
 #pragma pack(push,1)
 
 /**
@@ -661,7 +610,7 @@ class scaledNs {
 };
 
 /**
- * Provides a follow up TLV interface
+ * Provides a follow-up TLV interface back to the previous packing mode
  */
 class FollowUpTLV {
  private:
@@ -708,11 +657,11 @@ class FollowUpTLV {
 	}
 };
 
-/*!< back to whatever the previous packing mode was */
+/* back to whatever the previous packing mode was */
 #pragma pack(pop)
 
 /**
- * Provides the PTPMessageFollowUp interface
+ * Provides a class for a class for building a PTP follow up message
  */
 class PTPMessageFollowUp:public PTPMessageCommon {
 private:
@@ -758,19 +707,12 @@ public:
 		preciseOriginTimestamp = timestamp;
 	}
 	
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };
 
 /**
- * Provides a PTPMessagePathDelayReq interface
+ * Provides a class for building the PTP Path Delay Request message
  */
 class PTPMessagePathDelayReq : public PTPMessageCommon {
  private:
@@ -814,19 +756,12 @@ class PTPMessagePathDelayReq : public PTPMessageCommon {
 		return originTimestamp;
 	}
 	
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };
 
 /**
- * Provides the PTP message path delay response interface
+ * Provides a class for building the PTP Path Delay Response message.
  */
 class PTPMessagePathDelayResp:public PTPMessageCommon {
 private:
@@ -890,19 +825,12 @@ public:
 		return requestReceiptTimestamp;
 	}
 
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };
 
 /**
- * Provides the PTP message path delay response follow up interface
+ * Provides a class for building the PTP Path Delay Response follow up message.
  */
 class PTPMessagePathDelayRespFollowUp:public PTPMessageCommon {
  private:
@@ -966,13 +894,6 @@ public:
 		return requestingPortIdentity;
 	}
 
-	/**
-	 * @brief  Builds ptp message
-	 * @param  buf [out] PTP message
-	 * @param  size Size of message
-	 * @param  remote Remote LinkLayerAddress
-	 * @param  port IEEE1588Port where the PTP message is being built.
-	 */
 	friend PTPMessageCommon *buildPTPMessage
 	(char *buf, int size, LinkLayerAddress * remote, IEEE1588Port * port);
 };

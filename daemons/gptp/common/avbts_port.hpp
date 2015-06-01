@@ -1,31 +1,31 @@
 /******************************************************************************
 
-  Copyright (c) 2009-2012, Intel Corporation 
+  Copyright (c) 2009-2012, Intel Corporation
   All rights reserved.
-  
-  Redistribution and use in source and binary forms, with or without 
+
+  Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
-  
-   1. Redistributions of source code must retain the above copyright notice, 
+
+   1. Redistributions of source code must retain the above copyright notice,
       this list of conditions and the following disclaimer.
-  
-   2. Redistributions in binary form must reproduce the above copyright 
-      notice, this list of conditions and the following disclaimer in the 
+
+   2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-  
-   3. Neither the name of the Intel Corporation nor the names of its 
-      contributors may be used to endorse or promote products derived from 
+
+   3. Neither the name of the Intel Corporation nor the names of its
+      contributors may be used to endorse or promote products derived from
       this software without specific prior written permission.
-  
+
   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
-  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
-  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
-  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   POSSIBILITY OF SUCH DAMAGE.
 
@@ -218,7 +218,7 @@ class IEEE1588Port {
 	/* Port Status */
 	unsigned sync_count;  // 0 for master, ++ for each sync receive as slave
 	// set to 0 when asCapable is false, increment for each pdelay recvd
-	unsigned pdelay_count; 
+	unsigned pdelay_count;
 
 	/* Port Configuration */
 	unsigned char delay_mechanism;
@@ -265,7 +265,7 @@ class IEEE1588Port {
 
 	/* Network socket description
 	   physical interface number that object represents */
-	uint16_t ifindex;	
+	uint16_t ifindex;
 
 	IdentityMap_t identity_map;
 
@@ -288,14 +288,14 @@ class IEEE1588Port {
 	 PortIdentity * destIdentity, bool timestamp);
 
 	InterfaceLabel *net_label;
-	
+
 	OSLockFactory *lock_factory;
 	OSConditionFactory *condition_factory;
-	
+
 	bool pdelay_started;
  public:
 	bool forceSlave;	//!< Forces port to be slave. Added for testing.
-	
+
 	/**
 	 * @brief  Serializes (i.e. copy over buf pointer) the information from
 	 * the variables (in that order):
@@ -304,11 +304,11 @@ class IEEE1588Port {
 	 *  - Link Delay;
 	 *  - Neighbor Rate Ratio
 	 * @param  buf [out] Buffer where to put the results.
-	 * @param  count [inout] Length of buffer. It contains maximum lenght to be written
+	 * @param  count [inout] Length of buffer. It contains maximum length to be written
 	 * when the function is called, and the value is decremented by the same amount the
 	 * buf size increases.
 	 * @return TRUE if it has successfully written to buf all the values or if buf is NULL.
-	 * FALSE otherwise.
+	 * FALSE if count should be updated with the right size.
 	 */
 	bool serializeState( void *buf, long *count );
 
@@ -318,7 +318,7 @@ class IEEE1588Port {
 	 *  - asCapable;
 	 *  - Port State;
 	 *  - Link Delay;
-	 *  - Neighbor Rate Ratio 
+	 *  - Neighbor Rate Ratio
 	 * @param  buf Buffer containing the serialized state.
 	 * @param  count Buffer lenght. It is decremented by the same size of the variables that are
 	 * being copied.
@@ -339,7 +339,7 @@ class IEEE1588Port {
 	 * @return void
 	 */
 	void becomeSlave( bool restart_syntonization );
-	
+
 	/**
 	 * @brief  Starts pDelay event timer.
 	 * @return void
@@ -385,6 +385,12 @@ class IEEE1588Port {
 		}
 		asCapable = ascap;
 	}
+
+	/**
+	 * @brief  Gets the asCapable flag
+	 * @return asCapable flag
+	 */
+	bool getAsCapable() { return( asCapable ); }
 
 	/**
 	 * Destroys a IEEE1588Port
@@ -444,7 +450,7 @@ class IEEE1588Port {
 	 * @brief  Sends and event to a IEEE1588 port. It includes timestamp
 	 * @param  buf [in] Pointer to the data buffer
 	 * @param  len Size of the message
-	 * @param  mcast_type Enumeration MulticastType (pdlay, none or other)
+	 * @param  mcast_type Enumeration MulticastType (pdlay, none or other). Depracated.
 	 * @param  destIdentity Destination port identity
 	 * @return void
 	 */
@@ -456,7 +462,7 @@ class IEEE1588Port {
 	 * @brief Sends a general message to a port. No timestamps
 	 * @param buf [in] Pointer to the data buffer
 	 * @param len Size of the message
-	 * @param mcast_type Enumeration MulticastType (pdelay, none or other)
+	 * @param mcast_type Enumeration MulticastType (pdelay, none or other). Depracated.
 	 * @param destIdentity Destination port identity
 	 * @return void
 	 */
@@ -616,7 +622,7 @@ class IEEE1588Port {
 
 	/**
 	 * @brief  Sets last sync ptp message
-	 * @param  msg PTP sync message
+	 * @param  msg [in] PTP sync message
 	 * @return void
 	 */
 	void setLastSync(PTPMessageSync * msg) {
@@ -731,7 +737,7 @@ class IEEE1588Port {
 	}
 
 	/**
-	 * @brief  Gets the Peer rate offset
+	 * @brief  Gets the Peer rate offset. Used to calculate neighbor rate ratio.
 	 * @return FrequencyRatio peer rate offset
 	 */
 	FrequencyRatio getPeerRateOffset(void) {
@@ -739,7 +745,7 @@ class IEEE1588Port {
 	}
 
 	/**
-	 * @brief  Sets the peer rate offset
+	 * @brief  Sets the peer rate offset. Used to calculate neighbor rate ratio.
 	 * @param  offset Offset to be set
 	 * @return void
 	 */
@@ -856,12 +862,17 @@ class IEEE1588Port {
 	 bool last);
 
 	/**
-	 * @brief  Gets the ptp clock time information
+	 * @brief  Get the cross timestamping information.
+	 * The gPTP subsystem uses these samples to calculate
+	 * ratios which can be used to translate or extrapolate
+	 * one clock into another clock reference. The gPTP service
+	 * uses these supplied cross timestamps to perform internal
+	 * rate estimation and conversion functions.
 	 * @param  system_time [out] System time
 	 * @param  device_time [out] Device time
-	 * @param  local_clock Not Used
-	 * @param  nominal_clock_rate Not Used
-	 * @return TRUE if got the time successfully, FALSE otherwise
+	 * @param  local_clock [out] Local clock
+	 * @param  nominal_clock_rate [out] Nominal clock rate
+	 * @return True in case of success. FALSE in case of error
 	 */
 	void getDeviceTime
 	(Timestamp & system_time, Timestamp & device_time, uint32_t & local_clock,
@@ -939,7 +950,7 @@ class IEEE1588Port {
 
 	/**
 	 * @brief  Gets current sync count value. It is set to zero
-	 * when master and ++ each sync receive for slave.
+	 * when master and incremented at each sync received for slave.
 	 * @return sync count
 	 */
 	unsigned getSyncCount() {
